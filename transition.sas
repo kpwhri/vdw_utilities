@@ -4,7 +4,7 @@
 * (206) 287-2078
 * pardee.r@ghc.org
 *
-* C:\Documents and Settings/pardre1/Desktop/transition.sas
+* \\ghrisas\warehouse\management\Programs\utilities\transition.sas
 *
 * Proposed macro for doing final updates to GHRI DW production jobs.
 *********************************************/
@@ -13,8 +13,17 @@
                 , lib             =     /* Name of the lib where the dsets to be transitioned live.  There should be a &lib..&dset and a &lib..&dset._next versions */
                 , backdir         =     /* Folder spec for where archives of current-prod dsets go. */
                 , count_tolerance = 99  /* New dset must have at least this percent of the n(recs) as the old in order to proceed. */
-                , ignore_vardiffs = 0   /* Abort if new file is missing any vars. */
+                , ignore_vardiffs = 0   /* Set to 1 to override the abort-if-any-vars-are-missing check. */
+                , leave_last      = 1   /* Set to 0 to have the macro remove the _last version of the replaced dset. USE WITH CAUTION! */
                 ) ;
+
+  %** Do we have a new candidate file? ;
+  %if %sysfunc(exist(&lib..&dset._next)) = 0 %then %do ;
+    %do i = 1 %to 10 ;
+      %put ERROR: Not finding the replacement dset &lib..&dset._next--nothing to do here! ;
+    %end ;
+    %goto finish ;
+  %end ;
 
   %** Is there a dset we are replacing? ;
   %if %sysfunc(exist(&lib..&dset)) %then %do ;
@@ -74,6 +83,10 @@
       change &dset = &dset._last ;
       change &dset._next = &dset ;
     quit ;
+
+    %if &leave_last = 0 %then %do ;
+      %removedset(dset = &lib..&dset._last) ;
+    %end ;
 
   %end ;
   %else %do ;
