@@ -22,7 +22,7 @@
     %do i = 1 %to 10 ;
       %put ERROR: Not finding the replacement dset &lib..&dset._next--nothing to do here! ;
     %end ;
-    %goto finish ;
+    %return ;
   %end ;
 
   %** Is there a dset we are replacing? ;
@@ -56,14 +56,14 @@
       %do i = 1 %to 10 ;
         %put ERROR: WOULD-BE REPLACEMENT DSET &lib..&dset._next IS MISSING &n_missing_vars VARIABLES RELATIVE TO &lib..&dset.  ABORTING THE TRANSITION. ;
       %end ;
-      %goto finish ;
+      %return ;
     %end ;
 
     %if &percent_covered < &count_tolerance %then %do ;
       %do i = 1 %to 10 ;
         %put ERROR: WOULD-BE REPLACEMENT DATASET &lib..&dset._next CONTAINS ONLY &percent_covered PERCENT OF THE RECORDS THAT ARE IN &lib..&dset..  ABORTING THE TRANSITION. ;
       %end ;
-      %goto finish ;
+      %return ;
     %end ;
 
     %* If we get this far, we are good. ;
@@ -95,5 +95,4 @@
       change &dset._next = &dset ;
     quit ;
   %end ;
-  %finish: ;
 %mend transition ;
