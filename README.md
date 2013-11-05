@@ -5,6 +5,7 @@ Conceivably a collection of code useful for maintaining a SAS-based data warehou
 %Transition
 -----------
 Smoothly and (I hope) safely replaces a production dataset with an updated version.  The joy here is:
+
 1. Makes the actual update just a file rename so as to avoid locking the dset (or worse, being thwarted by others' locks).
 2. Refuses the update if the new file doesn't contain at least &count_tolerance percent of the records in the old.
 3. Refuses the update if the new file doesn't have all the same variables as the old.
@@ -22,9 +23,11 @@ Signature:
           , leave_last      = 1   /* Set to 0 to have the macro remove the _last version of the replaced dset. USE WITH CAUTION! */
           ) ;
 ```
+
 To use it:
-1.	Create a new dset with a _next suffix on it in the production library (so e.g., //server/warehouse/folder/encounters_next.sas7bdat).
-2.	Create whatever indexes, integrity constraints, etc. on that _next dset. 
-3.	Call %transition w/those first two args specified at least (if backdir is null you’ll get a warning, but the code will run).
+
+1. Create a new dset with a \_next suffix on it in the production library (so e.g., //server/warehouse/folder/encounters_next.sas7bdat).
+2. Create whatever indexes, integrity constraints, etc. on that _next dset.
+3. Call %transition w/those first two args specified at least (if backdir is null you’ll get a warning, but the code will run).
 
 The macro will put ERROR:s and WARNING:s as necessary, but should keep quiet if its expectations are met & it can do its thing w/out error.
