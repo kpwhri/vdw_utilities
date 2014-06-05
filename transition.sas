@@ -27,6 +27,12 @@
 
   %** Is there a dset we are replacing? ;
   %if %sysfunc(exist(&lib..&dset)) %then %do ;
+    * Lock that bad boy. ;
+    %trylock(member    = &lib..&dset
+            , timeout  = 3600
+            , retry    = 600
+            )
+
     %** Blunt quality check--does the new file have at least &count_tolerance % of the records in the old file? ;
     proc contents noprint data = &lib..&dset._next  out = newfile(keep = nobs name) ;
     run ;
@@ -54,21 +60,17 @@
 
     %if (&ignore_vardiffs = 0 and &n_missing_vars > 0) %then %do ;
       %do i = 1 %to 10 ;
-        %put ERROR: WOULD-BE REPLACEMENT DSET &lib..&dset._next IS MISSING &n_missing_vars VARIABLES RELATIVE TO &lib..&dset.  ABORTING THE TRANSITION. ;
+        %put ERROR: WOULD-BE REPLACEMENT DSET &lib..&dset._next IS MISSING %trim(&n_missing_vars) VARIABLES RELATIVE TO &lib..&dset.  ABORTING THE TRANSITION. ;
       %end ;
       %return ;
     %end ;
 
     %if &percent_covered < &count_tolerance %then %do ;
       %do i = 1 %to 10 ;
-        %put ERROR: WOULD-BE REPLACEMENT DATASET &lib..&dset._next CONTAINS ONLY &percent_covered PERCENT OF THE RECORDS THAT ARE IN &lib..&dset..  ABORTING THE TRANSITION. ;
+        %put ERROR: WOULD-BE REPLACEMENT DATASET &lib..&dset._next CONTAINS ONLY %trim(&percent_covered) PERCENT OF THE RECORDS THAT ARE IN &lib..&dset..  ABORTING THE TRANSITION. ;
       %end ;
       %return ;
     %end ;
-
-    %* If we get this far, we are good. ;
-    %** Ditch the last _last, if it exists. ;
-    %removedset(dset = &lib..&dset._last) ;
 
     %if %sysfunc(fileexist(&backdir)) %then %do ;
       %WriteComp(&sysdate._previous_prod_&dset._backup.zip , &lib, &dset, includeindex=1, output_dir = &backdir) ;
@@ -79,12 +81,20 @@
       %end ;
     %end ;
 
+    * BUG: for some reason I dont understand, I must release this lock *prior to* the renames, or else ;
+    * removing the _last dset bombs with, e.g.: ;
+    * ERROR: File T.CMD_LAST.DATA is currently open. ;
+    * At the sql drop statement. ;
+    lock &lib..&dset clear ;
+
     proc datasets nolist library = &lib ;
       change &dset = &dset._last ;
       change &dset._next = &dset ;
     quit ;
 
     %if &leave_last = 0 %then %do ;
+      * Tried this to see if it would avoid the locking error mentioned above. ;
+      * %sysfunc(sleep(30)) ;
       %removedset(dset = &lib..&dset._last) ;
     %end ;
 
