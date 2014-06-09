@@ -92,7 +92,6 @@ libname t "&dir" ;
 
 %mend succeed_missing_vars ;
 
-
 %macro succeed_no_current(args) ;
   %clear_out ;
   data t.cmd_next ;
@@ -146,6 +145,19 @@ libname t "&dir" ;
 
 %mend succeed_remove_last ;
 
+%macro succeed_leftover_last(args) ;
+  %clear_out ;
+  data t.cmd_last t.cmd t.cmd_next ;
+    set sashelp.class ;
+  run ;
+
+  %transition(dset          = cmd   /* One-part name of the dset we are transitioning (e.g., encounters). */
+          , lib             = t     /* Name of the lib where the dsets to be transitioned live.  There should be a &lib..&dset and a &lib..&dset._next versions */
+          , backdir         = &dir  /* Folder spec for where archives of current-prod dsets go. */
+          ) ;
+%mend succeed_leftover_last ;
+
+
 %macro test_lock1 ;
   * Sets up a prod dataset for me to open in an interactive instance of SAS.  Then we run one of the success macros ;
   data t.cmd ;
@@ -177,11 +189,12 @@ options mprint mlogic ;
 
 * %fail_no_next ;
 * %fail_toofew_recs ;
-%fail_missing_vars ;
+* %fail_missing_vars ;
 * %succeed_missing_vars ;
 * %succeed_no_current ;
 * %succeed_remove_last ;
-* %succeed_leave_last ;
+%succeed_leave_last ;
+%succeed_leftover_last ;
 * %test_lock1 ;
 * %test_lock2 ;
 

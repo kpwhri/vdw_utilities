@@ -81,6 +81,9 @@
       %end ;
     %end ;
 
+    * If there is a lingering _last dset--kill it. ;
+    %removedset(dset = &lib..&dset._last) ;
+
     * BUG: for some reason I dont understand, I must release this lock *prior to* the renames, or else ;
     * removing the _last dset bombs with, e.g.: ;
     * ERROR: File T.CMD_LAST.DATA is currently open. ;
