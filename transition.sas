@@ -17,6 +17,8 @@
                 , leave_last      = 1   /* Set to 0 to have the macro remove the _last version of the replaced dset. USE WITH CAUTION! */
                 ) ;
 
+  %** TODO: Make this multiple-dataset-friendly. ;
+
   %** Do we have a new candidate file? ;
   %if %sysfunc(exist(&lib..&dset._next)) = 0 %then %do ;
     %do i = 1 %to 10 ;
@@ -73,7 +75,13 @@
     %end ;
 
     %if %sysfunc(fileexist(&backdir)) %then %do ;
+      * Got to release the lock so 7-zip can use the file. ;
+      lock &lib..&dset clear ;
       %WriteComp(&sysdate._previous_prod_&dset._backup.zip , &lib, &dset, includeindex=1, output_dir = &backdir) ;
+      %trylock(member    = &lib..&dset
+              , timeout  = 3600
+              , retry    = 600
+              )
     %end ;
     %else %do ;
       %do i = 1 %to 10 ;
