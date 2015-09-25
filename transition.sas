@@ -15,6 +15,7 @@
                 , count_tolerance = 99  /* New dset must have at least this percent of the n(recs) as the old in order to proceed. */
                 , ignore_vardiffs = 0   /* Set to 1 to override the abort-if-any-vars-are-missing check. */
                 , leave_last      = 1   /* Set to 0 to have the macro remove the _last version of the replaced dset. USE WITH CAUTION! */
+                , skip_backup     = 0   /* Set to 1 to forego the backup */
                 ) ;
 
   %** TODO: Make this multiple-dataset-friendly. ;
@@ -48,12 +49,17 @@
             oldfile as o
       ;
 
-      select count(*) as n_missing_vars
-              into :n_missing_vars
+      create table _missing_vars as
+      select lower(o.name) as name label = "Missing Variable"
       from  oldfile as o LEFT JOIN
             newfile as n
-      on    o.name = n.name
+      on    lower(o.name) = lower(n.name)
       where n.name IS NULL
+      ;
+
+      select count(*) as n_missing_vars
+              into :n_missing_vars
+      from _missing_vars
       ;
 
       drop table newfile ;
@@ -61,6 +67,14 @@
     quit ;
 
     %if (&ignore_vardiffs = 0 and &n_missing_vars > 0) %then %do ;
+      proc sql number ;
+        title "Missing Variables in &dset._next:" ;
+        select name
+        from _missing_vars
+        ;
+
+        drop table _missing_vars ;
+      quit ;
       %do i = 1 %to 10 ;
         %put ERROR: WOULD-BE REPLACEMENT DSET &lib..&dset._next IS MISSING %trim(&n_missing_vars) VARIABLES RELATIVE TO &lib..&dset.  ABORTING THE TRANSITION. ;
       %end ;
@@ -74,20 +88,23 @@
       %return ;
     %end ;
 
-    %if %sysfunc(fileexist(&backdir)) %then %do ;
-      * Got to release the lock so 7-zip can use the file. ;
-      lock &lib..&dset clear ;
-      %WriteComp(&sysdate._previous_prod_&dset._backup.zip , &lib, &dset, includeindex=1, output_dir = &backdir) ;
-      %trylock(member    = &lib..&dset
-              , timeout  = 3600
-              , retry    = 600
-              )
-    %end ;
-    %else %do ;
-      %do i = 1 %to 10 ;
-        %put WARNING: BACKUP DIRECTORY SPEC GIVEN DOES NOT EXIST--NOT BACKING UP CURRENT PRODUCTION DSET. ;
+    %if &skip_backup = 0 %then %do ;
+      %if %sysfunc(fileexist(&backdir)) %then %do ;
+        * Got to release the lock so 7-zip can use the file. ;
+        lock &lib..&dset clear ;
+        %WriteComp(&sysdate._previous_prod_&dset._backup.zip , &lib, &dset, includeindex=1, output_dir = &backdir) ;
+        %trylock(member    = &lib..&dset
+                , timeout  = 3600
+                , retry    = 600
+                )
+      %end ;
+      %else %do ;
+        %do i = 1 %to 10 ;
+          %put WARNING: BACKUP DIRECTORY SPEC GIVEN DOES NOT EXIST--NOT BACKING UP CURRENT PRODUCTION DSET. ;
+        %end ;
       %end ;
     %end ;
+    %else %put NOTE: Skipping the backup, as directed. ;
 
     * If there is a lingering _last dset--kill it. ;
     %removedset(dset = &lib..&dset._last) ;
