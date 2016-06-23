@@ -183,6 +183,30 @@ libname t "&dir" ;
 
 %mend test_lock2 ;
 
+%macro succeed_spacedir ;
+  libname t "\\home\pardre1\workingdata\cons\space dir" ;
+
+  %clear_out ;
+  data t.cmd ;
+    set sashelp.class ;
+  run ;
+  data t.cmd_next ;
+    set sashelp.class ;
+  run ;
+
+  %transition(dset          = cmd   /* One-part name of the dset we are transitioning (e.g., encounters). */
+          , lib             = t     /* Name of the lib where the dsets to be transitioned live.  There should be a &lib..&dset and a &lib..&dset._next versions */
+          , backdir         = &dir  /* Folder spec for where archives of current-prod dsets go. */
+          /* , leave_last = 0 */
+          ) ;
+
+  %if %sysfunc(exist(t.cmd_last)) = 0 %then %do i = 1 %to 10 ;
+    %put ERROR: The _last dataset should be here and isnt!!!! ;
+  %end ;
+
+%mend succeed_spacedir ;
+
+
 
 options mprint mlogic ;
 
@@ -193,8 +217,11 @@ options mprint mlogic ;
 * %succeed_missing_vars ;
 * %succeed_no_current ;
 * %succeed_remove_last ;
-%succeed_leave_last ;
-%succeed_leftover_last ;
+* %succeed_leave_last ;
+* %succeed_leftover_last ;
+
+%succeed_spacedir ;
+
 * %test_lock1 ;
 * %test_lock2 ;
 
