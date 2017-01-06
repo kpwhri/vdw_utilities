@@ -81,10 +81,11 @@
   *Get user option set for orientation. This report is wide and must be landscape, but we want to 
     return to the original orientation before exiting, so save that information to use on exit ;
       %let orig_orientation = %sysfunc(getoption(ORIENTATION));
+      %let orig_fmterr = %sysfunc(getoption(nofmterr));
 
   *Set options for this report;
   options mlogic mprint linesize = max pagesize=max orientation = landscape
-   noquotelenmax
+   noquotelenmax nofmterr
   ;
 
 
@@ -118,13 +119,18 @@ ods pdf close;
  %return;
 %end;
 
-*Load into work directory;
+*Load into work directory: use a dummy name. If source has long name, intermediate datasets may exceed 32 characters.;
 %if (%length(&dropvar) > 0 ) %then %do;
-   data &ds.; set &inlib..&ds (&limset drop = &dropvar); run;
+   data _dummy; set &inlib..&ds (&limset drop = &dropvar); run;
 %end;
 %else %do;
-   data &ds.; set &inlib..&ds (&limset); run;
+   data _dummy; set &inlib..&ds (&limset); run;
 %end;
+*Store original name;
+%let dsname = &ds;
+*Set ds variable to dummy;
+%let ds = _dummy;
+
 
 *Rename "disallowed" variables;
  %varchk(name, &ds);
@@ -356,62 +362,100 @@ title7 "Sample";
    proc sort data = &ds._unique_t; by varname; run;
    proc sort data = &ds.c; by varname; run;
 
-   data &ds._factor &ds._stat_n &ds._stat_c;
+   data &ds._factor_n &ds._factor_c &ds._stat_n &ds._stat_c;
     merge &ds._unique_t (in = u)
           &ds.c (in = c keep = varname type);
     by varname; 
     if u and c;
-    if unique <= &numlevel then output &ds._factor;
-    else if type = 1 then output &ds._stat_n;
-    else if type = 2 then output &ds._stat_c;
+    if type = 1 then do;
+        if unique <= &numlevel then output &ds._factor_n;
+        else output &ds._stat_n;
+    end;
+    else if type = 2 then do;
+        if unique <= &numlevel then output &ds._factor_c;
+        else output &ds._stat_c;
+    end;
+
    run;
 
 %if (&debug) %then %do;
-title7 "Factors";
-proc print data = &ds._factor; run;
+  title7 "Factor N";
+  proc print data = &ds._factor_n; run;
+  title7 "Factor C";
+  proc print data = &ds._factor_c; run;
   title7 "STAT N";
   proc print data = &ds._stat_n; run;
-
   title7 "STAT C";
   proc print data = &ds._stat_c; run;
 %end;    
 
   *Get the lists of variables by type (factor, numeric, or character);
-   *initialize lists; %let vflist = ; %let vnlist = ; %let vclist = ;
+   *initialize lists; %let vfnlist = ; %let vfclist = ; %let vnlist = ; %let vclist = ;
    proc sql noprint; 
-     select varname into :vflist separated by ' ' from &ds._factor; 
+     select varname into :vfnlist separated by ' ' from &ds._factor_n; 
+     select varname into :vfclist separated by ' ' from &ds._factor_c; 
      select varname into :vnlist separated by ' ' from &ds._stat_n; 
      select varname into :vclist separated by ' ' from &ds._stat_c; 
    run;
 
  *Start with a Clean Slate, since you will be appending records;
-   proc datasets nolist lib = work; delete &ds._freq &ds._nfreq &ds._cfreq; run;
+   proc datasets nolist lib = work; delete &ds._fnfreq &ds._fcfreq &ds._nfreq &ds._cfreq; run;
  *Initialize set list;
   %let setlist = ;
-  *Factor Variables: Get the frequency of each value, and append to overall dataset of value freqs;  
-   %if (%length(&vflist) > 0 ) %then %do;
-    %do i = 1 %to %sysfunc(countw(&vflist)) ;
+
+  *Process Numeric and Character Factor type separately, because you want to format the Numeric to Strings, 
+     but not process the Characters;
+  *Numeric Factor Variables: Get the frequency of each value, and append to overall dataset of value freqs;  
+   %if (%length(&vfnlist) > 0 ) %then %do;
+    %do i = 1 %to %sysfunc(countw(&vfnlist)) ;
     proc freq noprint data = &srcds; 
-      table %scan(&vflist, &i) / out=%scan(&vflist, &i)_freq missing norow nocol nopercent ; run;
-    data %scan(&vflist, &i)_freq (keep = varname var_value COUNT PERCENT rename = (count = record_count percent = record_percent));
-      length varname $32; varname = "%scan(&vflist, &i)";
-      set %scan(&vflist, &i)_freq (rename = (%scan(&vflist, &i) = Value));
+      table %scan(&vfnlist, &i) / out=%scan(&vfnlist, &i)_freq missing norow nocol nopercent ; run;
+    data %scan(&vfnlist, &i)_freq (keep = varname var_value COUNT PERCENT rename = (count = record_count percent = record_percent));
+      length varname $32; varname = "%scan(&vfnlist, &i)";
+      set %scan(&vfnlist, &i)_freq (rename = (%scan(&vfnlist, &i) = Value));
       length var_value $300; var_value = trim(left(put(Value, best.)));
     run;
-    proc append base = &ds._freq data = %scan(&vflist, &i)_freq ; run;
+    proc append base = &ds._fnfreq data = %scan(&vfnlist, &i)_freq ; run;
     %end;
     *Add a variable that orders the values from smallest to largest (var_value_level)
     and identifies what kind of information this is (var_value_type = "Value List");
-    proc sort data = &ds._freq; by varname var_value; run;
-    data &ds._freq; 
-     set &ds._freq; 
+    proc sort data = &ds._fnfreq; by varname var_value; run;
+    data &ds._fnfreq; 
+     set &ds._fnfreq; 
       by varname var_value; 
       retain var_value_level;
       if first.varname then var_value_level = 1; else var_value_level = var_value_level + 1; 
       length var_value_type $32; var_value_type = "List" ;
     run;
-    %let setlist = &setlist &ds._freq;
+    %let setlist = &setlist &ds._fnfreq;
   %end; *end of if there is a vflist;
+
+ *Character Factor Variables: Get the frequency of each value, and append to overall dataset of value freqs;  
+   %if (%length(&vfclist) > 0 ) %then %do;
+    %do i = 1 %to %sysfunc(countw(&vfclist)) ;
+    proc freq noprint data = &srcds; 
+      table %scan(&vfclist, &i) / out=%scan(&vfclist, &i)_freq missing norow nocol nopercent ; run;
+    data %scan(&vfclist, &i)_freq (keep = varname var_value COUNT PERCENT rename = (count = record_count percent = record_percent));
+      length varname $32; varname = "%scan(&vfclist, &i)";
+      set %scan(&vfclist, &i)_freq (rename = (%scan(&vfclist, &i) = Value));
+      length var_value $300; var_value = trim(left(Value));
+    run;
+    proc append base = &ds._fcfreq data = %scan(&vfclist, &i)_freq ; run;
+    %end;
+    *Add a variable that orders the values from smallest to largest (var_value_level)
+    and identifies what kind of information this is (var_value_type = "Value List");
+    proc sort data = &ds._fcfreq; by varname var_value; run;
+    data &ds._fcfreq; 
+     set &ds._fcfreq; 
+      by varname var_value; 
+      retain var_value_level;
+      if first.varname then var_value_level = 1; else var_value_level = var_value_level + 1; 
+      length var_value_type $32; var_value_type = "List" ;
+    run;
+    %let setlist = &setlist &ds._fcfreq;
+  %end; *end of if there is a vflist;
+
+
 
   *Numeric Variables: Get Min and Max;
    %if (%length(&vnlist) > 0 ) %then %do;
@@ -426,7 +470,9 @@ proc print data = &ds._factor; run;
            *Note: this selection method returns the numeric value of the variable;        
            select min(&mvname) format BEST32. into :minvalue from &srcds ;
            select max(&mvname) format BEST32. into :maxvalue from &srcds ; 
-          
+
+          /*NOTE:  WE WANT TO MAKE A FORMATTED AS WELL AS UNFORMATTED TEXT STRING OUT OF NUMBERS*/
+
            create table max as select 
              "&mvname" as varname length=32, 
              'Max' as var_value_type length = 32, 
@@ -680,10 +726,10 @@ ods pdf file = "&outname" style=myrtf;
 
 
 
- title1 "Data Profile for &inlib..&ds., showing variables and a representative (sample) value for each variable."; 
+ title1 "Data Profile for &inlib..&dsname., showing variables and a representative (sample) value for each variable."; 
    %let title2 = There are &&num_var_&ds variables and &show_totobs records.;
    %if %eval(&&num_&ds < &totobs) %then %do;
-     %let title2 = &title2 DATA CUT TO FIRST &show_nobs RECORDS.;
+     %let title2 = &title2 DATA CUT TO FIRST &show_nobs RECORDS. Use options in PROFILE macro to control data shown.;
    %end;
     %if %eval(&&num_&ds > &limobs) %then %do;
     %let title2 = &title2 STATISTICS PERTAIN TO &show_limobs. RANDOMLY SELECTED OBSERVATIONS.;
@@ -790,10 +836,9 @@ ods listing;
 
 *11* CLEANUP;
 
-*Return to original orientation if it was changed;
-  %if (&format) %then %do;
-   options orientation=&orig_orientation;
-  %end;
+*Return to original options;
+   options orientation=&orig_orientation &orig_fmterr;
+
 
 *Export a dictionary if requested;
    %if (&dictionary) %then %do;
@@ -801,17 +846,18 @@ ods listing;
    proc sort nodupkey data = &ds.d out = &ds.d (keep = &vlist) ; by &vlist; run;
        proc export
     	    data = &ds.d
-       	    file = "&ds._dictionary.csv"
+       	    file = "&dsname._dictionary.csv"
 	    dbms = csv
 	    REPLACE;
        run;
    %end;
 
-
  *Cleanup;
+
+ 
  
  proc datasets nolist lib = work;
-    delete delete &ds.d  &ds.c &ds._unique &ds._unique_t &ds._missing &ds._missing_t &ds._sample &ds._sample_t ;
+    delete delete _dummy &ds.d  &ds.c &ds._unique &ds._unique_t &ds._missing &ds._missing_t &ds._sample &ds._sample_t ;
   run;
 
 
