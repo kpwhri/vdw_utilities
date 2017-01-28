@@ -101,7 +101,7 @@
 *Count the number of records ;
 %let totobs = 0;
 proc sql noprint;
-    select count(*) into :totobs from &inlib..&ds;
+    select count(*) format best32. into :totobs  from &inlib..&ds;
 quit;
 %let totobs = %eval(&totobs * 1) ;
 %let limset = ;
@@ -516,8 +516,11 @@ title7 "Sample";
     proc sql nowarn noprint;
        %let mvname = %scan(&vclist, &i);
        %Put Looking for min and max of &mvname; 
-        select min(trim(left(&mvname))) into :minvalue from &srcds ;
-        select max(trim(left(&mvname))) into :maxvalue from &srcds ; 
+        select min(trim(left(compress(&mvname,'"')))) into :minvalue from &srcds ;
+        select max(trim(left(compress(&mvname,'"')))) into :maxvalue from &srcds ; 
+
+        %let maxcvalue = %superq(maxvalue);
+        %let mincvalue = %superq(minvalue);
 
 /**
         %Put MIN:  %nrquote("&minvalue") MAX: %nrquote("&maxvalue"); 
@@ -535,8 +538,9 @@ title7 "Sample";
         create table max as select 
           "&mvname" as varname length=32, 
           'Max' as var_value_type length = 32, 
-           trim(left(%nrquote("&maxvalue"))) as var_value length=300,
-          /*"&maxvalue" as var_value_fmt length = 300,*/
+           /*trim(left(%nrquote("&maxvalue"))) as var_value length=300,*/
+           /* %superq(maxvalue)) as var_value_fmt length = 300, */
+           "&maxcvalue" as var_value_fmt length = 300,
            count(*) as record_count 
            from &srcds where /*trim(left(&mvname))*/ &mvname = %nrquote("&maxvalue");
 
@@ -544,8 +548,9 @@ title7 "Sample";
         create table min as select 
            "&mvname" as varname length=32, 
            'Min' as var_value_type length = 32, 
-            trim(left(%nrquote("&minvalue"))) as var_value length=300,
-          /* "&minvalue" as var_value_fmt length=300,*/
+            /* trim(left(%nrquote("&minvalue"))) as var_value length=300, */
+           /*quote(%superq(minvalue)) as var_value_fmt length=300, */
+           "&mincvalue" as var_value_fmt length  = 300, 
             count(*) as record_count 
             from &srcds where /*trim(left(&mvname))*/ &mvname = %nrquote("&minvalue"); 
      quit;
