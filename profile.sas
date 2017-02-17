@@ -56,6 +56,9 @@
       value MissValue
             . = '(missing)';
 
+      value NotCalc
+            . = '(not calculated)';
+
    run;
  
 
@@ -140,9 +143,13 @@ ods pdf close;
 
 *Get dataset definition (contents: list of variables and variable definitions);
   %let srcds = &ds;
-  proc contents noprint data = &srcds out=&ds.c (keep = varnum name type length format rename = (name = varname)); run;
+  proc contents noprint data = &srcds out=&ds.c (keep = varnum name type length format formatl rename = (name = varname)); run;
   *Reorder variables.... ;
-  data &ds.c; retain varnum varname type length format; set &ds.c; run;
+  data &ds.c; retain varnum varname type length format; set &ds.c;
+    if ^missing(format) then do;
+      format = trim(left(format))||trim(left(put(formatl, best.))); 
+    end;
+  run;
 
 %if (&debug) %then %do;
   title "ALL EXPECTED VARS";
@@ -150,17 +157,20 @@ ods pdf close;
 %end;
 
 *Get Information about the Variables;
- %let nvlist = ; %let fvlist = ; %let flist = ; %let cvlist = ;
+ %let nvlist = ; %let fvlist = ; %let flist = ; %let cvlist = ; %let hvlist= ;
  proc sql noprint; 
   select count(*) format = BEST32. into :num_&ds from &srcds; 
   select count(*) format = BEST32. into :num_var_&ds from &ds.c;
   select varname into :vlist separated by ' ' from &ds.c;
-  select varname into :cvlist separated by ' ' from &ds.c where type = 2;
+  select varname into :cvlist separated by ' ' from &ds.c 
+    where type = 2 and upcase(format) not like '%HEX%' ;
+  select varname into :hvlist separated by ' ' from &ds.c
+      where type = 2 and upcase(format) like '%HEX%' ;
+
   select varname into :nvlist separated by ' ' from &ds.c where type = 1 and missing(format);
   select varname into :fvlist separated by ' ' from &ds.c where type = 1 and ^missing(format);
   select format||'.' into :flist separated by ' ' from &ds.c where type = 1 and ^missing(format); 
  quit;
-
 
 *Count the number of records in the dataset;
 %let num_&ds = %eval(&&num_&ds + 0);
@@ -250,7 +260,25 @@ run;
        %end;
     %end;
 
+*Rename hex variables back from s<variable name> to variable name;
+    *Applying missing value format to add a label if character variable is missing;
+    *For now, hard code $HEX32.;
+    %if (%length(&hvlist) > 0 ) %then %do;
+       %do mih = 1 %to %sysfunc(countw(&hvlist)) ;
+         length %scan(&hvlist, &mih) $300;
+         if (missing(s%scan(&hvlist, &mih))) then do;
+          %scan(&hvlist, &mih) = trim(left(put(s%scan(&hvlist, &mih), $MissValue.)));
+         end;
+         else do;
+           %scan(&hvlist, &mih) = trim(left(put(s%scan(&hvlist, &mih), $HEX32.)));
+         end;
+       %end;
+    %end;
+
   run;
+
+
+
 
 %if (&debug) %then %do;
 title7 "Sample";
@@ -362,21 +390,27 @@ title7 "Sample";
    proc sort data = &ds._unique_t; by varname; run;
    proc sort data = &ds.c; by varname; run;
 
-   data &ds._factor_n &ds._factor_c &ds._stat_n &ds._stat_c;
+   data &ds._factor_n &ds._factor_c &ds._stat_n &ds._stat_c &ds._stat_h;
     merge &ds._unique_t (in = u)
-          &ds.c (in = c keep = varname type);
+          &ds.c (in = c keep = varname type format);
     by varname; 
     if u and c;
     if type = 1 then do;
         if unique <= &numlevel then output &ds._factor_n;
         else output &ds._stat_n;
     end;
-    else if type = 2 then do;
+    else if (type = 2 and (index(upcase(format), 'HEX') = 0)) then do;
         if unique <= &numlevel then output &ds._factor_c;
         else output &ds._stat_c;
     end;
-
+    else if (type = 2 and (index(upcase(format), 'HEX') > 0) ) then do;
+      output &ds._stat_h;
+    end;
    run;
+
+
+
+
 
 %if (&debug) %then %do;
   title7 "Factor N";
@@ -387,15 +421,19 @@ title7 "Sample";
   proc print data = &ds._stat_n; run;
   title7 "STAT C";
   proc print data = &ds._stat_c; run;
+  title7 "STAT H";
+    proc print data = &ds._stat_h; run;
 %end;    
 
   *Get the lists of variables by type (factor, numeric, or character);
    *initialize lists; %let vfnlist = ; %let vfclist = ; %let vnlist = ; %let vclist = ;
+    %let vhlist = ;
    proc sql noprint; 
      select varname into :vfnlist separated by ' ' from &ds._factor_n; 
      select varname into :vfclist separated by ' ' from &ds._factor_c; 
      select varname into :vnlist separated by ' ' from &ds._stat_n; 
      select varname into :vclist separated by ' ' from &ds._stat_c; 
+     select varname into :vhlist separated by ' ' from &ds._stat_h; 
    run;
 
  *Start with a Clean Slate, since you will be appending records;
@@ -510,8 +548,8 @@ title7 "Sample";
    %end; *end of if the list exists;
  
    *Character Variables: Get Min and Max - tricky with all the wierd characters possible;
-    
-   %if (%length(&vclist) > 0 ) %then %do;
+    %if (%length(&vclist) > 0 ) %then %do;
+    %PUT RUNNING THROUGH &vclist TO GET MIN AND MAX FOR CHAR;
     %do i = 1 %to %sysfunc(countw(&vclist)) ;
     proc sql nowarn noprint;
        %let mvname = %scan(&vclist, &i);
@@ -521,44 +559,61 @@ title7 "Sample";
 
         %let maxcvalue = %superq(maxvalue);
         %let mincvalue = %superq(minvalue);
-
-/**
-        %Put MIN:  %nrquote("&minvalue") MAX: %nrquote("&maxvalue"); 
-
-         %if (%length(&minvalue) > 0 ) %then %do; 
-            %let minvalue = %sysfunc(trim(%sysfunc(left(%nrquote(&minvalue)))));
-         %end;
-     %if (%length(&maxvalue) > 0 ) %then %do;
-        %let maxvalue = %sysfunc(trim(%sysfunc(left(%nrquote(&maxvalue)))));
-     %end;
-
-        %Put MIN:  %nrquote("&minvalue") MAX: %nrquote("&maxvalue"); 
-**/
-   
+   *For now, assume that character values are not formatted differently;
         create table max as select 
           "&mvname" as varname length=32, 
           'Max' as var_value_type length = 32, 
-           /*trim(left(%nrquote("&maxvalue"))) as var_value length=300,*/
-           /* %superq(maxvalue)) as var_value_fmt length = 300, */
-           "&maxcvalue" as var_value_fmt length = 300,
+           "&maxcvalue" as var_value length = 300,
+           "" as var_value_fmt length = 300,
            count(*) as record_count 
-           from &srcds where /*trim(left(&mvname))*/ &mvname = %nrquote("&maxvalue");
-
+           from &srcds where  &mvname = %nrquote("&maxvalue");
 
         create table min as select 
            "&mvname" as varname length=32, 
            'Min' as var_value_type length = 32, 
-            /* trim(left(%nrquote("&minvalue"))) as var_value length=300, */
-           /*quote(%superq(minvalue)) as var_value_fmt length=300, */
-           "&mincvalue" as var_value_fmt length  = 300, 
+           "&mincvalue" as var_value length  = 300, 
+           "" as var_value_fmt length  = 300, 
             count(*) as record_count 
-            from &srcds where /*trim(left(&mvname))*/ &mvname = %nrquote("&minvalue"); 
+            from &srcds where &mvname = %nrquote("&minvalue"); 
      quit;
 
      proc append base = &ds._cfreq data = min; run;
      proc append base = &ds._cfreq data = max; run;
     %end; *end of loop through list;
     %let setlist = &setlist &ds._cfreq;
+    %if (&debug) %then %do;
+      title "&ds._cfreq";
+      proc print data = &ds._cfreq; run;
+    %end;
+   %end; *end of if the list exists;
+
+
+**HEX Variables;
+*For now, hard code as hex32;
+    %if (%length(&vhlist) > 0 ) %then %do;
+    %PUT RUNNING THROUGH &vhlist TO GET A SAMPLE VALUE;
+    %do i = 1 %to %sysfunc(countw(&vhlist)) ;
+    proc sql nowarn noprint inobs=1;
+       %let mvname = %scan(&vhlist, &i); 
+        create table sample as select 
+          "&mvname" as varname length=32, 
+          'Sample' as var_value_type length = 32, 
+           put(&mvname, $300.) as var_value length = 300,
+           put(&mvname, $HEX32.) as var_value_fmt length = 300 ,
+           . as record_count format = NotCalc.
+           from &srcds;
+     quit;
+
+     proc append base = &ds._hfreq data = sample; run;
+    %end; *end of loop through list;
+    %let setlist = &setlist &ds._hfreq;
+
+    %if (&debug) %then %do;
+      title "&ds._hfreq";
+      proc print data = &ds._hfreq; run;
+    %end;
+
+    
    %end; *end of if the list exists;
 
    *Combine results from factor, character and numeric variables;
@@ -566,6 +621,10 @@ title7 "Sample";
       set &setlist;
    run;
 
+%if (&debug) %then %do;
+title "&ds._value";
+proc print data  = &ds._value; run;
+%end;
 
 *7* COMBINE ALL DESCRIPTIVE SUMMARIES;
 
@@ -681,6 +740,7 @@ proc sort data = &ds.d; by varnum descending var_value_type descending var_value
 %if (&debug) %then %do;
 title7 "Before Proc Report";
 proc print data = &ds.d; run;
+proc contents data = &ds.d; run;
 %end;
 
 
