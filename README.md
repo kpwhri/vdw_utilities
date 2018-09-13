@@ -1,6 +1,6 @@
 prod_utilities
 ==============
-Conceivably a collection of code useful for maintaining a SAS-based data warehouse (though right now it only holds %transition).
+A collection of code useful for maintaining a SAS-based data warehouse (though right now it only holds %transition).
 
 %Transition
 -----------
@@ -31,3 +31,27 @@ To use it:
 3. Call %transition w/those first two args specified at least (if backdir is null you’ll get a warning, but the code will run).
 
 The macro will put ERROR:s and WARNING:s as necessary, but should keep quiet if its expectations are met & it can do its thing w/out error.
+
+%Profile
+--------
+Produces a summary report for an input dataset. Useful for initial exploration of a dataset you're unfamiliar with.
+
+test_sas_install.sas
+--------------------
+Script that exercises various bits of the SAS install that KPWA typically has. Used for testing new packagings of the SAS client, to make sure all expected modules are installed, dbs are reachable, etc..
+
+Enrollment Utilities
+====================
+Enrollment-specific useful routines
+
+de_overlap
+--------------
+Excellent routine that will resolve overlapping periods in VDW enrollment.  Also useful for interleaving multiple start/stop files (e.g., one is enrollees, the other is non-member patients).  See the powerpoint & demo program for details.
+
+annual_churn
+------------
+Written to explore the # and insurance type of members we lost/gained in the transition to Obamacare.  But change the years around to see this information for any transition.
+
+retention
+---------
+Produces data and plots indicating the rate at which people enrolled on date X disenroll, by sex and age category.
