@@ -1,6 +1,6 @@
-prod_utilities
+Utilities
 ==============
-A collection of code useful for maintaining a SAS-based data warehouse (though right now it only holds %transition).
+A collection of code useful for maintaining a SAS-based data warehouse, and other various possibly useful bits of code.
 
 %Transition
 -----------
