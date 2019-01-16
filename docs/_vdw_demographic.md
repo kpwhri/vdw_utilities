@@ -28,9 +28,9 @@ Foreign Keys
 
 Notes
 --------
-###Note 1: Race
+### Note 1: Race
 
-Our goal is to have the most complete, reliable, and detailed race and ethnicity information in the demographics file. SDMs should gather race information from all sources permitted at your site—for example, tumor registry data; state birth & death data; and regular large-scale social surveys. If there is more than one source of race information for a set of individuals, SDMs should give preference to self-reported sources.
+Our goal is to have the most complete, reliable, and detailed race and ethnicity information available in the demographics file. SDMs should gather race information from all sources permitted at your site—for example, tumor registry data; state birth & death data; and regular large-scale social surveys. If there is more than one source of race information for a set of individuals, SDMs should give preference to self-reported sources.
 
 Please see appendix A for guidelines on mapping local race values to the permissible value set in the VDW.
 
