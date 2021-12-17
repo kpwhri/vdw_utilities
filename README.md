@@ -26,8 +26,8 @@ Signature:
 
 To use it:
 
-1. Create a new dset with a \_next suffix on it in the production library (so e.g., //server/warehouse/folder/encounters_next.sas7bdat).
-2. Create whatever indexes, integrity constraints, etc. on that _next dset.
+1. Create a new dset with a \_next suffix on it in the production library (so e.g., //server/warehouse/folder/encounters\_next.sas7bdat).
+2. Create whatever indexes, integrity constraints, etc. on that \_next dset.
 3. Call %transition w/those first two args specified at least (if backdir is null you’ll get a warning, but the code will run).
 
 The macro will put ERROR:s and WARNING:s as necessary, but should keep quiet if its expectations are met & it can do its thing w/out error.
@@ -39,6 +39,10 @@ Produces a summary report for an input dataset. Useful for initial exploration o
 test_sas_install.sas
 --------------------
 Script that exercises various bits of the SAS install that KPWA typically has. Used for testing new packagings of the SAS client, to make sure all expected modules are installed, dbs are reachable, etc..
+
+runsas.ps1
+----------
+A powershell script that helps in scheduling SAS jobs on windows. [See instructions here.](runsas.md)
 
 Enrollment Utilities
 ====================
